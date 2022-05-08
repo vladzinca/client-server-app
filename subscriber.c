@@ -9,6 +9,12 @@
 #include <netdb.h>
 #include "helpers.h"
 
+typedef struct mesaj_udp {
+	char topic[50];
+	uint8_t tip_date;
+	char continut[1500];
+} mesaj_udp;
+
 void usage(char *file)
 {
 	fprintf(stderr, "Usage: %s server_address server_port\n", file);
@@ -17,36 +23,40 @@ void usage(char *file)
 
 int main(int argc, char *argv[])
 {
-	int sockfd, n, ret;
-	struct sockaddr_in serv_addr;
+	int tcpsockfd, n, ret;
+	struct sockaddr_in tcp_addr;
 	char buffer[BUFLEN];
 	fd_set read_fds, tmp_fds;
 
-	if (argc < 3) {
+	setvbuf(stdout, NULL, _IONBF, BUFSIZ);
+
+	if (argc < 4) {
 		usage(argv[0]);
 	}
 
 	FD_ZERO(&read_fds);
 	FD_ZERO(&tmp_fds);
 
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	DIE(sockfd < 0, "socket");
+	tcpsockfd = socket(AF_INET, SOCK_STREAM, 0);
+	DIE(tcpsockfd < 0, "socket");
 
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(atoi(argv[2]));
-	ret = inet_aton(argv[1], &serv_addr.sin_addr);
+	tcp_addr.sin_family = AF_INET;
+	tcp_addr.sin_port = htons(atoi(argv[3]));
+	ret = inet_aton(argv[2], &tcp_addr.sin_addr);
 	DIE(ret == 0, "inet_aton");
 
-	ret = connect(sockfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr));
+	ret = connect(tcpsockfd, (struct sockaddr*) &tcp_addr, sizeof(tcp_addr));
 	DIE(ret < 0, "connect");
 
+	send(tcpsockfd, argv[1], 10, 0);
+
 	FD_SET(STDIN_FILENO, &read_fds);
-	FD_SET(sockfd, &read_fds);
+	FD_SET(tcpsockfd, &read_fds);
 
 	while (1) {
 		tmp_fds = read_fds;
 
-		ret = select(sockfd + 1, &tmp_fds, NULL, NULL, NULL);
+		ret = select(tcpsockfd + 1, &tmp_fds, NULL, NULL, NULL);
 		DIE(ret < 0, "select");
 
 		if (FD_ISSET(STDIN_FILENO, &tmp_fds)) {
@@ -59,20 +69,20 @@ int main(int argc, char *argv[])
 			}
 
 			// se trimite mesaj la server
-			n = send(sockfd, buffer, strlen(buffer), 0);
+			n = send(tcpsockfd, buffer, strlen(buffer), 0);
 			DIE(n < 0, "send");
 		}
 
-		if (FD_ISSET(sockfd, &tmp_fds)) {
+		if (FD_ISSET(tcpsockfd, &tmp_fds)) {
 			memset(buffer, 0, BUFLEN);
-			n = recv(sockfd, buffer, BUFLEN, 0);
+			n = recv(tcpsockfd, buffer, BUFLEN, 0);
 			DIE(n < 0, "recv");
 
-			printf("Msg: %s\n", buffer);
+			// printf("Msg: %s\n", buffer);
 		}
 	}
 
-	close(sockfd);
+	close(tcpsockfd);
 
 	return 0;
 }
