@@ -82,10 +82,10 @@ void send_info_to_clients(int* clients) {
 
 int main(int argc, char *argv[])
 {
-	int sockfd, newsockfd, portno, dest;
+	int tcpsockfd, udpsockfd, newsockfd, portno, dest;
 	char buffer[BUFLEN];
-	struct sockaddr_in serv_addr, cli_addr;
-	int n, i, ret;
+	struct sockaddr_in tcp_addr, udp_addr;
+	int n, i, ret1, ret2, ret3, ret4;
 	socklen_t clilen;
 	int clients[MAX_CLIENTS_NO];
 
@@ -103,40 +103,56 @@ int main(int argc, char *argv[])
 	FD_ZERO(&read_fds);
 	FD_ZERO(&tmp_fds);
 
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	DIE(sockfd < 0, "socket");
+	tcpsockfd = socket(AF_INET, SOCK_STREAM, 0);
+	DIE(tcpsockfd < 0, "socket");
+
+	udpsockfd = socket(AF_INET, SOCK_STREAM, 0);
+	DIE(udpsockfd < 0, "socket");
 
 	portno = atoi(argv[1]);
 	DIE(portno == 0, "atoi");
 
-	memset((char *) &serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(portno);
-	serv_addr.sin_addr.s_addr = INADDR_ANY;
+	memset((char *) &tcp_addr, 0, sizeof(tcp_addr));
+	tcp_addr.sin_family = AF_INET;
+	tcp_addr.sin_port = htons(portno);
+	tcp_addr.sin_addr.s_addr = INADDR_ANY;
 
-	ret = bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(struct sockaddr));
-	DIE(ret < 0, "bind");
+	ret1 = bind(tcpsockfd, (struct sockaddr *) &tcp_addr, sizeof(struct sockaddr));
+	DIE(ret1 < 0, "bind");
 
-	ret = listen(sockfd, MAX_CLIENTS);
-	DIE(ret < 0, "listen");
+	ret1 = listen(tcpsockfd, MAX_CLIENTS);
+	DIE(ret1 < 0, "listen");
+
+	memset((char *) &udp_addr, 0, sizeof(udp_addr));
+	udp_addr.sin_family = AF_INET;
+	udp_addr.sin_port = htons(portno);
+	udp_addr.sin_addr.s_addr = INADDR_ANY;
+
+	// ret2 = bind(udpsockfd, (struct sockaddr *) &udp_addr, sizeof(struct sockaddr));
+	// DIE(ret2 < 0, "bind");
 
 	// se adauga noul file descriptor (socketul pe care se asculta conexiuni) in multimea read_fds
-	FD_SET(sockfd, &read_fds);
-	fdmax = sockfd;
+	FD_SET(STDIN_FILENO, &read_fds);
+	FD_SET(tcpsockfd, &read_fds);
+	FD_SET(udpsockfd, &read_fds);
+	if (tcpsockfd > udpsockfd)
+		fdmax = tcpsockfd;
+	else fdmax = udpsockfd;
 
+	int flag = 1;
 	while (1) {
 		tmp_fds = read_fds;
 
-		ret = select(fdmax + 1, &tmp_fds, NULL, NULL, NULL);
-		DIE(ret < 0, "select");
+		ret3 = select(fdmax + 1, &tmp_fds, NULL, NULL, NULL);
+		DIE(ret3 < 0, "select");
 
 		for (i = 0; i <= fdmax; i++) {
 			if (FD_ISSET(i, &tmp_fds)) {
-				if (i == sockfd) {
+				if (i == tcpsockfd) {
 					// a venit o cerere de conexiune pe socketul inactiv (cel cu listen),
 					// pe care serverul o accepta
-					clilen = sizeof(cli_addr);
-					newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+					clilen = sizeof(udp_addr);
+					newsockfd = accept(tcpsockfd, (struct sockaddr *) &udp_addr, &clilen);
 					DIE(newsockfd < 0, "accept");
 
 					// se adauga noul socket intors de accept() la multimea descriptorilor de citire
@@ -148,10 +164,17 @@ int main(int argc, char *argv[])
 					add_client(newsockfd, clients);
 
 					printf("Noua conexiune de la %s, port %d, socket client %d\n",
-							inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port), newsockfd);
+							inet_ntoa(udp_addr.sin_addr), ntohs(udp_addr.sin_port), newsockfd);
 
 					print_clients(clients);
 					send_info_to_clients(clients);
+				} else if (i == udpsockfd) {
+				} else if (i == STDIN_FILENO) {
+					fgets(buffer, BUFLEN, stdin);
+					if (strncmp(buffer, "exit", 4) == 0) { // cu strcmp nu merge, wtf
+						flag = 0;
+						break;
+					}
 				} else {
 					// s-au primit date pe unul din socketii de client,
 					// asa ca serverul trebuie sa le receptioneze
@@ -173,8 +196,8 @@ int main(int argc, char *argv[])
 					} else {
 						printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n", i, buffer);
 
-						ret = sscanf(buffer, "%d", &dest);
-						if (ret < 1 || !is_client_connected(dest, clients)) {
+						ret4 = sscanf(buffer, "%d", &dest);
+						if (ret4 < 1 || !is_client_connected(dest, clients)) {
 							n = strlen(INVALID_MESSAGE) + 1;
 							snprintf(buffer, n, INVALID_MESSAGE);
 							dest = i;
@@ -186,9 +209,14 @@ int main(int argc, char *argv[])
 				}
 			}
 		}
+		if (flag == 0)
+			break;
 	}
 
-	close(sockfd);
+	for (int i = 3; i <= fdmax; i++) {
+		if (FD_ISSET(i, &read_fds))
+			close(i);
+	}
 
 	return 0;
 }
