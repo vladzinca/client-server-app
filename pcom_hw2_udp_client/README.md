@@ -30,3 +30,4 @@ Load characteristics:
   --count COUNT         Number of packets to be send (only used for when mode is random, default: infinity)
   --delay DELAY         Wait time (in ms) between two messages (default: 0)
 ```
+

@@ -84,10 +84,12 @@ int main(int argc, char *argv[])
 {
 	int tcpsockfd, udpsockfd, newsockfd, portno, dest;
 	char buffer[BUFLEN];
-	struct sockaddr_in tcp_addr, udp_addr;
+	struct sockaddr_in serv_addr, tcp_addr, udp_addr;
 	int n, i, ret1, ret2, ret3, ret4;
 	socklen_t clilen;
 	int clients[MAX_CLIENTS_NO];
+
+	setvbuf(stdout, NULL, _IONBF, BUFSIZ);
 
 	fd_set read_fds;	// multimea de citire folosita in select()
 	fd_set tmp_fds;		// multime folosita temporar
@@ -112,12 +114,12 @@ int main(int argc, char *argv[])
 	portno = atoi(argv[1]);
 	DIE(portno == 0, "atoi");
 
-	memset((char *) &tcp_addr, 0, sizeof(tcp_addr));
-	tcp_addr.sin_family = AF_INET;
-	tcp_addr.sin_port = htons(portno);
-	tcp_addr.sin_addr.s_addr = INADDR_ANY;
+	memset((char *) &serv_addr, 0, sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = htons(portno);
+	serv_addr.sin_addr.s_addr = INADDR_ANY;
 
-	ret1 = bind(tcpsockfd, (struct sockaddr *) &tcp_addr, sizeof(struct sockaddr));
+	ret1 = bind(tcpsockfd, (struct sockaddr *) &serv_addr, sizeof(struct sockaddr));
 	DIE(ret1 < 0, "bind");
 
 	ret1 = listen(tcpsockfd, MAX_CLIENTS);
@@ -152,7 +154,7 @@ int main(int argc, char *argv[])
 					// a venit o cerere de conexiune pe socketul inactiv (cel cu listen),
 					// pe care serverul o accepta
 					clilen = sizeof(udp_addr);
-					newsockfd = accept(tcpsockfd, (struct sockaddr *) &udp_addr, &clilen);
+					newsockfd = accept(tcpsockfd, (struct sockaddr *) &tcp_addr, &clilen);
 					DIE(newsockfd < 0, "accept");
 
 					// se adauga noul socket intors de accept() la multimea descriptorilor de citire
@@ -161,12 +163,13 @@ int main(int argc, char *argv[])
 						fdmax = newsockfd;
 					}
 
-					add_client(newsockfd, clients);
+					recv(newsockfd, buffer, BUFLEN, 0);
+					// add_client(newsockfd, clients);
 
-					printf("Noua conexiune de la %s, port %d, socket client %d\n",
-							inet_ntoa(udp_addr.sin_addr), ntohs(udp_addr.sin_port), newsockfd);
+					printf("New client %s connected from %s:%d.\n",
+							buffer, inet_ntoa(tcp_addr.sin_addr), ntohs(tcp_addr.sin_port));
 
-					print_clients(clients);
+					// print_clients(clients);
 					send_info_to_clients(clients);
 				} else if (i == udpsockfd) {
 				} else if (i == STDIN_FILENO) {
@@ -184,22 +187,22 @@ int main(int argc, char *argv[])
 
 					if (n == 0) {
 						// conexiunea s-a inchis
-						printf("Socket-ul client %d a inchis conexiunea\n", i);
-						rm_client(i, clients);
+						// printf("Socket-ul client %d a inchis conexiunea\n", i);
+						// rm_client(i, clients);
 						close(i);
 
-						print_clients(clients);
-						send_info_to_clients(clients);
+						// print_clients(clients);
+						// send_info_to_clients(clients);
 
 						// se scoate din multimea de citire socketul inchis
 						FD_CLR(i, &read_fds);
 					} else {
-						printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n", i, buffer);
+						// printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n", i, buffer);
 
 						ret4 = sscanf(buffer, "%d", &dest);
 						if (ret4 < 1 || !is_client_connected(dest, clients)) {
 							n = strlen(INVALID_MESSAGE) + 1;
-							snprintf(buffer, n, INVALID_MESSAGE);
+							// snprintf(buffer, n, INVALID_MESSAGE);
 							dest = i;
 						}
 
