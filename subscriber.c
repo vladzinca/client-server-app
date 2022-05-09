@@ -9,11 +9,15 @@
 #include <netdb.h>
 #include "helpers.h"
 
-typedef struct mesaj_udp {
+typedef struct Message {
+	int command; // 0 = subscribe, 1 = unsubscribe, 2 = exit
 	char topic[50];
-	uint8_t tip_date;
-	char continut[1500];
-} mesaj_udp;
+	int tip_date;
+	char valoare_mesaj[1500];
+	int sf;
+	int ip[16];
+	int port;
+} Message;
 
 void usage(char *file)
 {
@@ -24,7 +28,7 @@ void usage(char *file)
 int main(int argc, char *argv[])
 {
 	int tcpsockfd, n, ret;
-	struct sockaddr_in tcp_addr;
+	struct sockaddr_in serv_addr;
 	char buffer[BUFLEN];
 	fd_set read_fds, tmp_fds;
 
@@ -40,12 +44,12 @@ int main(int argc, char *argv[])
 	tcpsockfd = socket(AF_INET, SOCK_STREAM, 0);
 	DIE(tcpsockfd < 0, "socket");
 
-	tcp_addr.sin_family = AF_INET;
-	tcp_addr.sin_port = htons(atoi(argv[3]));
-	ret = inet_aton(argv[2], &tcp_addr.sin_addr);
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = htons(atoi(argv[3]));
+	ret = inet_aton(argv[2], &serv_addr.sin_addr);
 	DIE(ret == 0, "inet_aton");
 
-	ret = connect(tcpsockfd, (struct sockaddr*) &tcp_addr, sizeof(tcp_addr));
+	ret = connect(tcpsockfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr));
 	DIE(ret < 0, "connect");
 
 	send(tcpsockfd, argv[1], 10, 0);
@@ -60,20 +64,27 @@ int main(int argc, char *argv[])
 		DIE(ret < 0, "select");
 
 		if (FD_ISSET(STDIN_FILENO, &tmp_fds)) {
-			// se citeste de la tastatura
+			// se citeste comanda de la tastatura
 			memset(buffer, 0, BUFLEN);
 			fgets(buffer, BUFLEN - 1, stdin);
 
-			if (strncmp(buffer, "exit", 4) == 0) {
+			// trimite mesaje la server pe baza comenzii
+			if (strncmp(buffer, "subscribe", 9) == 0) {
+
+			} else if (strncmp(buffer, "unsubscribe", 11) == 0) {
+
+			} else if (strncmp(buffer, "exit", 4) == 0) {
+				Message msg;
+				memset(&msg, 0, sizeof(Message));
+				msg.command = 2;
+				n = send(tcpsockfd, &msg, sizeof(Message), 0);
 				break;
 			}
-
-			// se trimite mesaj la server
-			n = send(tcpsockfd, buffer, strlen(buffer), 0);
-			DIE(n < 0, "send");
 		}
 
 		if (FD_ISSET(tcpsockfd, &tmp_fds)) {
+			// primeste mesajul de la server
+
 			memset(buffer, 0, BUFLEN);
 			n = recv(tcpsockfd, buffer, BUFLEN, 0);
 			DIE(n < 0, "recv");
