@@ -12,6 +12,16 @@
 #define MAX_CLIENTS_NO 100
 #define FD_START 4
 
+typedef struct Message {
+	char command;
+	char topic[50];
+	int tip_date;
+	char valoare_mesaj[1500];
+	int sf;
+	int ip[16];
+	int port;
+} Message;
+
 void usage(char *file)
 {
 	fprintf(stderr, "Usage: %s server_port\n", file);
@@ -83,9 +93,9 @@ void send_info_to_clients(int* clients) {
 int main(int argc, char *argv[])
 {
 	int tcpsockfd, udpsockfd, newsockfd, portno, dest;
-	char buffer[BUFLEN];
+	char buffer[sizeof(Message)];
 	struct sockaddr_in serv_addr, tcp_addr, udp_addr;
-	int n, i, ret1, ret2, ret3, ret4;
+	int n, i, ret1, ret3, ret4, ret5;
 	socklen_t clilen;
 	int clients[MAX_CLIENTS_NO];
 
@@ -122,9 +132,6 @@ int main(int argc, char *argv[])
 	ret1 = bind(tcpsockfd, (struct sockaddr *) &serv_addr, sizeof(struct sockaddr));
 	DIE(ret1 < 0, "bind");
 
-	ret1 = listen(tcpsockfd, MAX_CLIENTS);
-	DIE(ret1 < 0, "listen");
-
 	memset((char *) &udp_addr, 0, sizeof(udp_addr));
 	udp_addr.sin_family = AF_INET;
 	udp_addr.sin_port = htons(portno);
@@ -132,6 +139,9 @@ int main(int argc, char *argv[])
 
 	// ret2 = bind(udpsockfd, (struct sockaddr *) &udp_addr, sizeof(struct sockaddr));
 	// DIE(ret2 < 0, "bind");
+
+	ret3 = listen(tcpsockfd, MAX_CLIENTS);
+	DIE(ret3 < 0, "listen");
 
 	// se adauga noul file descriptor (socketul pe care se asculta conexiuni) in multimea read_fds
 	FD_SET(STDIN_FILENO, &read_fds);
@@ -145,8 +155,8 @@ int main(int argc, char *argv[])
 	while (1) {
 		tmp_fds = read_fds;
 
-		ret3 = select(fdmax + 1, &tmp_fds, NULL, NULL, NULL);
-		DIE(ret3 < 0, "select");
+		ret4 = select(fdmax + 1, &tmp_fds, NULL, NULL, NULL);
+		DIE(ret4 < 0, "select");
 
 		for (i = 0; i <= fdmax; i++) {
 			if (FD_ISSET(i, &tmp_fds)) {
@@ -181,9 +191,11 @@ int main(int argc, char *argv[])
 				} else {
 					// s-au primit date pe unul din socketii de client,
 					// asa ca serverul trebuie sa le receptioneze
-					memset(buffer, 0, BUFLEN);
-					n = recv(i, buffer, sizeof(buffer), 0);
+					memset(buffer, 0, sizeof(Message));
+					n = recv(i, buffer, sizeof(Message), 0);
 					DIE(n < 0, "recv");
+
+					Message* msg = (Message*) buffer;
 
 					if (n == 0) {
 						// conexiunea s-a inchis
@@ -196,11 +208,17 @@ int main(int argc, char *argv[])
 
 						// se scoate din multimea de citire socketul inchis
 						FD_CLR(i, &read_fds);
+					} else if (msg->command == 'e') {
+						printf("Client C1 disconnected.\n");
+						close(i);
+						FD_CLR(i, &read_fds);
+						break;
+
 					} else {
 						// printf("S-a primit de la clientul de pe socketul %d mesajul: %s\n", i, buffer);
 
-						ret4 = sscanf(buffer, "%d", &dest);
-						if (ret4 < 1 || !is_client_connected(dest, clients)) {
+						ret5 = sscanf(buffer, "%d", &dest);
+						if (ret5 < 1 || !is_client_connected(dest, clients)) {
 							n = strlen(INVALID_MESSAGE) + 1;
 							// snprintf(buffer, n, INVALID_MESSAGE);
 							dest = i;
